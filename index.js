@@ -1,5 +1,5 @@
 const express = require('express');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 require('dotenv').config();
 const cors = require('cors');
@@ -30,6 +30,7 @@ async function run() {
 
         const menuCollection = client.db("bistroBossDB").collection("menu");
         const reviewsCollection = client.db("bistroBossDB").collection("reviews");
+        const cartCollection = client.db("bistroBossDB").collection("carts");
 
         // get menu
         app.get('/menu', async(req,res)=> {
@@ -38,6 +39,26 @@ async function run() {
         // get reviews
         app.get('/reviews', async(req,res)=> {
             res.send(await reviewsCollection.find(req.query).toArray())
+        })
+        // post carts
+        app.post('/carts', async(req,res)=> {
+            res.send(await cartCollection.insertOne(req.body))
+        })
+        // get carts
+        app.get('/carts', async(req,res)=> {
+            res.send(await cartCollection.find(req.query).toArray())
+        })
+        // get carts by email
+        app.get('/carts', async (req, res) => {
+            const email = req.query.email;
+            const query={email:email}
+            res.send(await cartCollection.find(query).toArray())
+        })
+        // delete a carts by id
+        app.delete('/carts/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            res.send(await cartCollection.deleteOne(query))
         })
 
 
