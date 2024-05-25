@@ -3,12 +3,44 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 require('dotenv').config();
 const cors = require('cors');
+const jwt = require('jsonwebtoken')
 const port = process.env.PORT || 5000;
 
 
 // middlewers
 app.use(cors());
 app.use(express.json())
+
+
+let userCollection;
+
+//custom middleweres
+const verifyToken = async (req, res, next) => {
+    console.log('Inside verify token', req.headers.authorization)
+    if (!req.headers.authorization) {
+        return res.status(401).send({ message: 'Unauthorized access' })
+    }
+    const token = req.headers.authorization.split(' ')[1]
+    jwt.verify(token, process.env.ACCESS_TOKN_SECRET, (error, decoded) => {
+        if (error) {
+            return res.status(401).send({ message: 'Unauthorized access' })
+        }
+        req.decoded = decoded;
+        next();
+    })
+}
+
+// verify admin after verify token
+const verifyAdmin = async (req, res, next) => {
+    const email = req.decoded.email;
+    const query = { email: email }
+    const user = await userCollection.findOne(query)
+    let isAdmin = user?.role === 'admin';
+    if (!isAdmin) {
+        return res.status(403).send({ message: 'Forbidden access' })
+    }
+    next();
+}
 
 
 
@@ -31,45 +63,87 @@ async function run() {
         const menuCollection = client.db("bistroBossDB").collection("menu");
         const reviewsCollection = client.db("bistroBossDB").collection("reviews");
         const cartCollection = client.db("bistroBossDB").collection("carts");
-        const userCollection = client.db("bistroBossDB").collection("users");
+        userCollection = client.db("bistroBossDB").collection("users");
 
-         // post users
+        //jwt related api
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKN_SECRET, { expiresIn: '1h' });
+            res.send({ token });
+        })
+
+        // post users
         app.post('/users', async (req, res) => {
             const newUser = req.body;
             const query = { email: newUser.email };
             const existingUser = await userCollection.findOne(query);
             if (!existingUser) {
                 res.send(await userCollection.insertOne(newUser))
-            }  
+            }
             else {
-                return res.send({message: 'User Already Exists'})
+                return res.send({ message: 'User Already Exists', insertedId: null })
             }
         })
         // get users
-        app.get('/users', async(req,res)=> {
+        app.get('/users', verifyToken, verifyAdmin, async (req, res) => {
             res.send(await userCollection.find(req.query).toArray())
         })
 
+        // check user role
+        app.get('/users/admin/:email', verifyToken, async (req, res) => {
+            const email = req.params.email;
+            if (email !== req.decoded.email) {
+                return res.status(403).send({ message: 'Forbidden access' })
+            }
+            const query = { email: email }
+            const user = await userCollection.findOne(query)
+            let admin = false;
+            if (user) {
+                admin = user?.role === 'admin'
+            }
+            res.send({ admin })
+        })
+
+        // User Role by Admin
+        app.patch('/users/admin/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const updateDoc = {
+                $set: {
+                    role: 'admin'
+                }
+            }
+            const result = await userCollection.updateOne(filter, updateDoc);
+            res.send(result)
+        })
+
+        // delete a user by id
+        app.delete('/users/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            res.send(await userCollection.deleteOne(query))
+        })
+
         // get menu
-        app.get('/menu', async(req,res)=> {
+        app.get('/menu', async (req, res) => {
             res.send(await menuCollection.find(req.query).toArray())
         })
         // get reviews
-        app.get('/reviews', async(req,res)=> {
+        app.get('/reviews', async (req, res) => {
             res.send(await reviewsCollection.find(req.query).toArray())
         })
         // post carts
-        app.post('/carts', async(req,res)=> {
+        app.post('/carts', async (req, res) => {
             res.send(await cartCollection.insertOne(req.body))
         })
         // get carts
-        app.get('/carts', async(req,res)=> {
+        app.get('/carts', async (req, res) => {
             res.send(await cartCollection.find(req.query).toArray())
         })
         // get carts by email
         app.get('/carts', async (req, res) => {
             const email = req.query.email;
-            const query={email:email}
+            const query = { email: email }
             res.send(await cartCollection.find(query).toArray())
         })
         // delete a carts by id
