@@ -105,7 +105,7 @@ async function run() {
         })
 
         // User Role by Admin
-        app.patch('/users/admin/:id', async (req, res) => {
+        app.patch('/users/admin/:id',verifyToken,verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const filter = { _id: new ObjectId(id) };
             const updateDoc = {
@@ -118,14 +118,18 @@ async function run() {
         })
 
         // delete a user by id
-        app.delete('/users/:id', async (req, res) => {
+        app.delete('/users/:id',verifyToken,verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) }
             res.send(await userCollection.deleteOne(query))
         })
 
+        // post menu
+        app.post('/menu',verifyToken,verifyAdmin, async (req, res) => {
+            res.send(await menuCollection.insertOne(req.body))
+        })
         // get menu
-        app.get('/menu', async (req, res) => {
+        app.get('/menu',verifyToken, verifyAdmin, async (req, res) => {
             res.send(await menuCollection.find(req.query).toArray())
         })
         // get reviews
