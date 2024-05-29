@@ -64,6 +64,7 @@ async function run() {
         const menuCollection = client.db("bistroBossDB").collection("menu");
         const reviewsCollection = client.db("bistroBossDB").collection("reviews");
         const cartCollection = client.db("bistroBossDB").collection("carts");
+        const paymentCollection = client.db("bistroBossDB").collection("payments");
         userCollection = client.db("bistroBossDB").collection("users");
 
         //jwt related api
@@ -88,6 +89,26 @@ async function run() {
                 clientSecret: paymentIntent.client_secret,
             });
         });
+
+        // post payment
+        app.post('/payments', async (req, res) => {
+            const payment = req.body;
+            const paymentResult = await paymentCollection.insertOne(payment)
+
+            // after posting payment clear cart of this user
+            console.log('Payment info', payment);
+            const query = {
+                _id: {
+                    $in: payment.cartIds?.map(id => new ObjectId(id))
+                }
+            };
+            const deleteResult = await cartCollection.deleteMany(query)
+            res.send({ paymentResult, deleteResult })
+        })
+        // get payments
+        app.get('/payments', async (req, res) => {
+            res.send(await paymentCollection.find(req.query).toArray())
+        })
 
         // post users
         app.post('/users', async (req, res) => {
