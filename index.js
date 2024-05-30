@@ -74,6 +74,73 @@ async function run() {
             res.send({ token });
         })
 
+        //using aggregate pipeline
+        app.get('/order-stats', verifyToken, verifyAdmin, async (req, res) => {
+            const result = await paymentCollection.aggregate([
+                {
+                    $unwind: '$menuItemIds'
+                },
+                {
+                    $lookup: {
+                        from: 'menu',
+                        localField: 'menuItemIds',
+                        foreignField: '_id',
+                        as: 'menuItems'
+                    }
+                },
+                {
+                    $unwind: '$menuItems'
+                },
+                {
+                    $group: {
+                        _id: '$menuItems.category',
+                        quantity: {
+                            $sum: 1
+                        },
+                        revenue: { $sum: "$menuItems.price" }
+                    }
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        category: '$_id',
+                        quantity: '$quantity',
+                        totalRevenue: '$totalRevenue'
+                    }
+                },
+            ]).toArray();
+
+            res.send(result)
+        })
+
+        //stats or analytics
+        app.get('/admin-stats', async (req, res) => {
+            const users = await userCollection.estimatedDocumentCount();
+            const menuItems = await menuCollection.estimatedDocumentCount();
+            const orders = await paymentCollection.estimatedDocumentCount();
+
+            // this is not the best way
+            // const payments = await paymentCollection.find().toArray();
+            // const revenue = payments.reduce((total, payment) => total + payment.price, 0)
+
+            const result = await paymentCollection.aggregate([{
+                $group: {
+                    _id: null,
+                    totalRevenue: {
+                        $sum: "$price"
+                    }
+                }
+            }]).toArray()
+            const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+
+            res.send({
+                users,
+                menuItems,
+                orders,
+                revenue
+            })
+        })
+
         // payment intent 
         app.post("/create-payment-intent", async (req, res) => {
             const { price } = req.body;
@@ -106,8 +173,12 @@ async function run() {
             res.send({ paymentResult, deleteResult })
         })
         // get payments
-        app.get('/payments', async (req, res) => {
-            res.send(await paymentCollection.find(req.query).toArray())
+        app.get('/payments/:email', verifyToken, async (req, res) => {
+            const query = { email: req.params.email }
+            if (req.params.email !== req.decoded.email) {
+                return res.status(403).send({ message: 'Forbidden access' })
+            }
+            res.send(await paymentCollection.find(query).toArray())
         })
 
         // post users
